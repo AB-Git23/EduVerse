@@ -13,36 +13,17 @@ class CustomUserCreateSerializer(UserCreateSerializer):
 
 
 class CustomUserSerializer(UserSerializer):
-    profile = serializers.SerializerMethodField()
 
     class Meta(UserSerializer.Meta):
         model = User
-        fields = ('id', 'email', 'username', 'role', 'profile')
-
-    def get_profile(self, obj):
-        if obj.role == User.ROLE_STUDENT:
-            try:
-                profile = obj.student_profile
-                return {
-                    'batch': profile.batch,
-                    'enrollment_date': profile.enrollment_date,
-                }
-            except:
-                return None
-        elif obj.role == User.ROLE_INSTRUCTOR:
-            try:
-                profile = obj.instructor_profile
-                return {
-                    'bio': profile.bio,
-                    'expertise': profile.expertise,
-                }
-            except:
-                return None
-        return None
+        fields = ('id', 'email', 'username', 'role')
+        extra_kwargs = {
+            'role': {'read_only': True},
+        }
 
 
 class StudentProfileSerializer(serializers.ModelSerializer):
-    user = CustomUserSerializer()
+    user = CustomUserSerializer(read_only=True)
 
     class Meta:
         model = StudentProfile
@@ -50,7 +31,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
 
 
 class InstructorProfileSerializer(serializers.ModelSerializer):
-    user = CustomUserSerializer()
+    user = CustomUserSerializer(read_only=True)
 
     class Meta:
         model = InstructorProfile

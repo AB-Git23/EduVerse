@@ -58,9 +58,14 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
 
         StudentProfile.objects.create(user=user, batch=batch)
         return user
+    
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
 
 
-class IntructorRegisterSerializer(serializers.ModelSerializer):
+class InstructorRegisterSerializer(serializers.ModelSerializer):
     bio = serializers.CharField(required=False, write_only=True)
     expertise = serializers.CharField(required=False, write_only=True)
 
@@ -87,3 +92,9 @@ class IntructorRegisterSerializer(serializers.ModelSerializer):
         )
 
         return user
+    
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+    

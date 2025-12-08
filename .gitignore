@@ -99,6 +99,8 @@ static/
 media/
 uploads/
 media/instructor_docs/
+media/*/
+
 # ============================
 # Node.js (if frontend integrated later)
 # ============================

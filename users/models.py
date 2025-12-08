@@ -1,3 +1,4 @@
+from django.utils import timezone
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 
@@ -71,6 +72,19 @@ class InstructorProfile(models.Model):
         User, on_delete=models.CASCADE, related_name='instructor_profile')
     bio = models.TextField(blank=True, null=True)
     expertise = models.CharField(max_length=255, blank=True, null=True)
+
+        # Verification fields
+    is_verified = models.BooleanField(default=False)
+    verification_requested_at = models.DateTimeField(null=True, blank=True)
+    verification_document = models.FileField(upload_to='instructor_docs/', null=True, blank=True)
+    verification_rejected_reason = models.TextField(blank=True, null=True)
+    verification_reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    def mark_requested(self, document=None):
+        self.verification_requested_at = timezone.now()
+        if document:
+            self.verification_document = document
+        self.save(update_fields=['verification_requested_at', 'verification_document'])
 
     def __str__(self):
         return f"Instructor Profile: {self.user.email}"

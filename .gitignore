@@ -98,7 +98,7 @@ static/
 # User-uploaded media files
 media/
 uploads/
-
+media/instructor_docs/
 # ============================
 # Node.js (if frontend integrated later)
 # ============================

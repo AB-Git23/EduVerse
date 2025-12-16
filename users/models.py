@@ -89,3 +89,26 @@ class InstructorProfile(models.Model):
     def __str__(self):
         return f"Instructor Profile: {self.user.email}"
 
+
+
+class InstructorVerificationDocument(models.Model):
+    """
+    Stores one verification file per row so an instructor can submit multiple documents.
+    """
+    profile = models.ForeignKey(
+        InstructorProfile,
+        on_delete=models.CASCADE,
+        related_name='documents'
+    )
+    document = models.FileField(upload_to='instructor_docs/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    # optional metadata
+    filename = models.CharField(max_length=255, blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        if not self.filename and self.document:
+            self.filename = self.document.name
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Doc {self.id} for {self.profile.user.email}"

@@ -5,7 +5,7 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from .validators import validate_document_file
-from .models import InstructorProfile, StudentProfile, User
+from .models import InstructorProfile, StudentProfile, User, InstructorVerificationDocument
 
 User = get_user_model()
 
@@ -34,25 +34,47 @@ class StudentProfileSerializer(serializers.ModelSerializer):
         fields = ('user', 'enrollment_date', 'batch')
 
 
+class InstructorVerificationDocumentSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField(read_only=True)
+    class Meta:
+        model = InstructorVerificationDocument
+        fields = ('id', 'filename', 'url', 'uploaded_at')
+
+    def get_url(self, obj):
+        request = self.context.get('request')
+        if obj.document:
+            try:
+                url = obj.document.url
+            except ValueError:
+                return None
+            if request:
+                return request.build_absolute_uri(url)
+            return url
+        return None
+
+
 class InstructorProfileSerializer(serializers.ModelSerializer):
     user = CustomUserSerializer(read_only=True)
     verification_document_url = serializers.SerializerMethodField()
+    documents = InstructorVerificationDocumentSerializer(many=True, read_only=True)
 
     class Meta:
         model = InstructorProfile
-        fields = ('id', 'user', 'bio', 'expertise', 'is_verified', 'verification_document_url', 'verification_requested_at', 'verification_rejected_reason', 'verification_reviewed_at')
-
+        fields = ('id', 'user', 'bio', 'expertise', 'is_verified', 'verification_document_url',
+                  'verification_requested_at', 'verification_rejected_reason', 'verification_reviewed_at',
+                  'documents')
         read_only_fields = (
             'is_verified',
             'verification_requested_at',
             'verification_rejected_reason',
             'verification_reviewed_at',
             'verification_document_url',
-            'verification_reviewed_at',
             'user',
+            'documents',
         )
 
     def get_verification_document_url(self, obj):
+        # keep existing behavior for the legacy single-file field
         request = self.context.get('request')
         if obj.verification_document:
             if request:
@@ -81,10 +103,11 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
 
         StudentProfile.objects.create(user=user, batch=batch)
         return user
-    
+
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
+            raise serializers.ValidationError(
+                "A user with this email already exists.")
         return value
 
 
@@ -92,11 +115,13 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
 class InstructorRegisterSerializer(serializers.ModelSerializer):
     bio = serializers.CharField(required=False, write_only=True)
     expertise = serializers.CharField(required=False, write_only=True)
-    verification_document = serializers.FileField(required=False, write_only=True)
+    verification_document = serializers.FileField(
+        required=False, write_only=True)
 
     class Meta:
         model = User
-        fields = ('email', 'username', 'password', 'bio', 'expertise', 'verification_document')
+        fields = ('email', 'username', 'password', 'bio',
+                  'expertise', 'verification_document')
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
@@ -120,16 +145,22 @@ class InstructorRegisterSerializer(serializers.ModelSerializer):
             validate_document_file(document)
             profile.verification_document = document
             profile.verification_requested_at = timezone.now()
-            profile.save(update_fields=['verification_document', 'verification_requested_at'])
+            profile.save(update_fields=[
+                         'verification_document', 'verification_requested_at'])
 
         return user
 
-    
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
+            raise serializers.ValidationError(
+                "A user with this email already exists.")
         return value
-    
+
 
 class RejectReasonSerializer(serializers.Serializer):
     reason = serializers.CharField(required=True, allow_blank=False)
+
+
+class EmptySerializer(serializers.Serializer):
+    pass
+

@@ -1,13 +1,20 @@
-from rest_framework.viewsets import ModelViewSet, GenericViewSet
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.views import APIView
 from rest_framework import permissions, generics, status, mixins, viewsets
 from rest_framework.response import Response
-from rest_framework.mixins import RetrieveModelMixin, UpdateModelMixin, DestroyModelMixin
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAdminUser
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.core.mail import send_mail
+from django.conf import settings
+from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.http import QueryDict
 from .permissions import IsInstructor, IsStudent
-from .serializers import InstructorProfileSerializer, StudentProfileSerializer, StudentRegisterSerializer, InstructorRegisterSerializer
-from .models import StudentProfile, InstructorProfile
+from .serializers import InstructorProfileSerializer, StudentProfileSerializer, StudentRegisterSerializer, InstructorRegisterSerializer, RejectReasonSerializer, EmptySerializer, InstructorVerificationDocumentSerializer
+from .models import StudentProfile, InstructorProfile, InstructorVerificationDocument
+from .validators import validate_document_file
 
 User = get_user_model()
 
@@ -17,11 +24,12 @@ class StudentRegisterView(mixins.CreateModelMixin, viewsets.GenericViewSet):
     serializer_class = StudentRegisterSerializer
     permission_classes = [permissions.AllowAny]
 
+
 class InstructorRegisterView(mixins.CreateModelMixin, viewsets.GenericViewSet):
     queryset = User.objects.all()
     serializer_class = InstructorRegisterSerializer
     permission_classes = [permissions.AllowAny]
-
+    parser_classes = [MultiPartParser, FormParser]
 
 class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -43,7 +51,7 @@ class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
         user = request.user
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
+
     def perform_update(self, serializer):
         # This method runs the actual save; serializer already respects read_only_fields.
         serializer.save()
@@ -78,8 +86,128 @@ class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
                 data.pop(key, None)
 
         # Now validate and save using serializer with the cleaned data
-        serializer = serializer_class(instance, data=data, partial=partial, context={'request': request})
+        serializer = serializer_class(
+            instance, data=data, partial=partial, context={'request': request})
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
 
         return Response(serializer.data)
+
+
+class InstructorReviewViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAdminUser]
+    serializer_class = InstructorProfileSerializer
+
+    def get_queryset(self):
+        return InstructorProfile.objects.filter(is_verified=False).select_related('user')
+
+    def get_serializer_class(self):
+        if self.action == 'reject':
+            return RejectReasonSerializer
+        if self.action == 'approve':
+            return EmptySerializer
+        return InstructorProfileSerializer
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def approve(self, request, pk=None):
+        profile = self.get_object()
+        profile.is_verified = True
+        profile.verification_rejected_reason = ''
+        profile.verification_reviewed_at = timezone.now()
+        profile.save(update_fields=[
+                     'is_verified', 'verification_rejected_reason', 'verification_reviewed_at'])
+
+        try:
+            send_mail(
+                'Instructor account approved',
+                f'Hi {profile.user.username or profile.user.email},\n\nYour instructor account has been approved.',
+                settings.DEFAULT_FROM_EMAIL,
+                [profile.user.email],
+                fail_silently=False,
+            )
+        except Exception:
+            pass
+
+        return Response({'detail': 'Instructor approved.'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def reject(self, request, pk=None):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        reason = serializer.validated_data['reason']
+
+        profile = self.get_object()
+        profile.is_verified = False
+        profile.verification_rejected_reason = reason
+        profile.verification_reviewed_at = timezone.now()
+        profile.save(update_fields=[
+                     'is_verified', 'verification_rejected_reason', 'verification_reviewed_at'])
+
+        try:
+            send_mail(
+                'Instructor verification rejected',
+                f'Hi {profile.user.username or profile.user.email},\n\n'
+                f'Your instructor verification request was rejected.\n\nReason: {reason}',
+                settings.DEFAULT_FROM_EMAIL,
+                [profile.user.email],
+                fail_silently=False,
+            )
+        except Exception:
+            pass
+
+        return Response({'detail': 'Instructor rejected.', 'reason': reason}, status=status.HTTP_200_OK)
+
+
+
+class UploadVerificationDocumentAPIView(APIView):
+    """
+    Accepts one or more files via 'verification_documents' form field.
+    - Only instructors allowed.
+    - Validates each file.
+    - Creates InstructorVerificationDocument rows.
+    - Updates InstructorProfile: sets is_verified=False, clears rejection reason,
+      updates verification_requested_at.
+    - Returns the InstructorProfileSerializer (with documents list).
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        if user.role != User.ROLE_INSTRUCTOR:
+            return Response({'detail': 'Only instructors can upload verification documents.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # support either multiple files via 'verification_documents' or single 'verification_document'
+        files = request.FILES.getlist('verification_documents')
+        single = request.FILES.get('verification_document')
+        if single and not files:
+            files = [single]
+
+        if not files:
+            return Response({'detail': 'No files provided. Use "verification_documents" (multi) or "verification_document" (single).'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile, _ = InstructorProfile.objects.get_or_create(user=user)
+
+        created_docs = []
+        for f in files:
+            try:
+                validate_document_file(f)
+            except Exception as e:
+                # return validation error for the offending file (abort entire upload)
+                return Response({'detail': f'File validation error: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+            doc = InstructorVerificationDocument(profile=profile, document=f)
+            doc.save()
+            created_docs.append(doc)
+
+        # update profile to pending
+        profile.is_verified = False
+        profile.verification_rejected_reason = ''
+        profile.verification_requested_at = timezone.now()
+        # Optionally update the legacy single-file field to the most recent
+        # profile.verification_document = created_docs[-1].document
+        profile.save(update_fields=['is_verified', 'verification_rejected_reason', 'verification_requested_at'])
+
+        # Return updated profile data
+        serializer = InstructorProfileSerializer(profile, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

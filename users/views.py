@@ -177,11 +177,10 @@ class UploadVerificationDocumentAPIView(APIView):
         if user.role != User.ROLE_INSTRUCTOR:
             return Response({'detail': 'Only instructors can upload verification documents.'}, status=status.HTTP_403_FORBIDDEN)
 
-        # support either multiple files via 'verification_documents' or single 'verification_document'
+        # support either multiple files via 'verification_documents' or 'verification_document'
         files = request.FILES.getlist('verification_documents')
-        single = request.FILES.get('verification_document')
-        if single and not files:
-            files = [single]
+        if not files:
+            files = request.FILES.getlist('verification_document')
 
         if not files:
             return Response({'detail': 'No files provided. Use "verification_documents" (multi) or "verification_document" (single).'}, status=status.HTTP_400_BAD_REQUEST)

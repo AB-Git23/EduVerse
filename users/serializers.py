@@ -1,11 +1,12 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from djoser.serializers import UserCreateSerializer, UserSerializer
+from requests import Response
 from rest_framework import serializers
 from django.utils import timezone
 
 from .validators import validate_document_file
-from .models import InstructorProfile, StudentProfile, User, InstructorVerificationDocument
+from .models import InstructorProfile, StudentProfile, User, InstructorVerificationDocument, VerificationSubmission
 
 User = get_user_model()
 
@@ -34,53 +35,74 @@ class StudentProfileSerializer(serializers.ModelSerializer):
         fields = ('user', 'enrollment_date', 'batch')
 
 
-class InstructorVerificationDocumentSerializer(serializers.ModelSerializer):
-    url = serializers.SerializerMethodField(read_only=True)
+class VerificationDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = InstructorVerificationDocument
-        fields = ('id', 'filename', 'url', 'uploaded_at')
+        fields = ["id", "document", "uploaded_at"]
 
-    def get_url(self, obj):
-        request = self.context.get('request')
-        if obj.document:
-            try:
-                url = obj.document.url
-            except ValueError:
-                return None
-            if request:
-                return request.build_absolute_uri(url)
-            return url
-        return None
+
+class VerificationSubmissionAdminDetailSerializer(serializers.ModelSerializer):
+    instructor_email = serializers.EmailField(
+        source="profile.user.email",
+        read_only=True
+    )
+    instructor_username = serializers.CharField(
+        source="profile.user.username",
+        read_only=True
+    )
+    documents = VerificationDocumentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = VerificationSubmission
+        fields = [
+            "id",
+            "status",
+            "rejection_reason",
+            "created_at",
+            "reviewed_at",
+            "instructor_email",
+            "instructor_username",
+            "documents",
+        ]
+
+
+class VerificationSubmissionSerializer(serializers.ModelSerializer):
+    documents = VerificationDocumentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = VerificationSubmission
+        fields = [
+            "id",
+            "status",
+            "rejection_reason",
+            "created_at",
+            "documents",
+        ]
 
 
 class InstructorProfileSerializer(serializers.ModelSerializer):
     user = CustomUserSerializer(read_only=True)
-    verification_document_url = serializers.SerializerMethodField()
-    documents = InstructorVerificationDocumentSerializer(many=True, read_only=True)
+    current_submission = serializers.SerializerMethodField()
 
     class Meta:
         model = InstructorProfile
-        fields = ('id', 'user', 'bio', 'expertise', 'is_verified', 'verification_document_url',
-                  'verification_requested_at', 'verification_rejected_reason', 'verification_reviewed_at',
-                  'documents')
+        fields = ('id', 'user', 'bio', 'expertise', 'is_verified', 'current_submission')
+
         read_only_fields = (
             'is_verified',
             'verification_requested_at',
-            'verification_rejected_reason',
-            'verification_reviewed_at',
-            'verification_document_url',
             'user',
-            'documents',
         )
 
-    def get_verification_document_url(self, obj):
-        # keep existing behavior for the legacy single-file field
-        request = self.context.get('request')
-        if obj.verification_document:
-            if request:
-                return request.build_absolute_uri(obj.verification_document.url)
-            return obj.verification_document.url
-        return None
+    def get_current_submission(self, obj):
+        submission = obj.verification_submissions.filter(
+            status=VerificationSubmission.STATUS_PENDING
+        ).first()
+
+        if not submission:
+            return None
+
+        return VerificationSubmissionSerializer(submission).data
 
 
 class StudentRegisterSerializer(serializers.ModelSerializer):
@@ -111,23 +133,25 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
         return value
 
 
-
 class InstructorRegisterSerializer(serializers.ModelSerializer):
     bio = serializers.CharField(required=False, write_only=True)
     expertise = serializers.CharField(required=False, write_only=True)
-    verification_document = serializers.FileField(
-        required=False, write_only=True)
+    verification_documents = serializers.ListField(
+        child=serializers.FileField(),
+        write_only=True,
+        allow_empty=False
+    )
 
     class Meta:
         model = User
         fields = ('email', 'username', 'password', 'bio',
-                  'expertise', 'verification_document')
+                  'expertise', 'verification_documents')
         extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
         bio = validated_data.pop('bio', '')
         expertise = validated_data.pop('expertise', '')
-        document = validated_data.pop('verification_document', None)
+        documents = validated_data.pop('verification_documents')
 
         user = User.objects.create_user(
             email=validated_data['email'],
@@ -141,12 +165,23 @@ class InstructorRegisterSerializer(serializers.ModelSerializer):
             bio=bio,
             expertise=expertise,
         )
-        if document:
-            validate_document_file(document)
-            profile.verification_document = document
-            profile.verification_requested_at = timezone.now()
-            profile.save(update_fields=[
-                         'verification_document', 'verification_requested_at'])
+
+        submission = VerificationSubmission.objects.create(
+            profile=profile,
+            status=VerificationSubmission.STATUS_PENDING
+        )
+
+        for doc in documents:
+            validate_document_file(doc)
+            InstructorVerificationDocument.objects.create(
+                submission=submission,
+                document=doc
+            )
+
+        profile.verification_requested_at = timezone.now()
+        profile.is_verified = False
+        profile.save(update_fields=[
+                     "verification_requested_at", "is_verified"])
 
         return user
 
@@ -157,10 +192,36 @@ class InstructorRegisterSerializer(serializers.ModelSerializer):
         return value
 
 
+class VerificationSubmissionAdminSerializer(serializers.ModelSerializer):
+    instructor_email = serializers.EmailField(
+        source="profile.user.email",
+        read_only=True
+    )
+
+    class Meta:
+        model = VerificationSubmission
+        fields = [
+            "id",
+            "status",
+            "created_at",
+            "instructor_email",
+        ]
+
+
+class InstructorVerificationSubmissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VerificationSubmission
+        fields = [
+            "id",
+            "status",
+            "rejection_reason",
+            "created_at",
+        ]
+
+
 class RejectReasonSerializer(serializers.Serializer):
     reason = serializers.CharField(required=True, allow_blank=False)
 
 
 class EmptySerializer(serializers.Serializer):
     pass
-

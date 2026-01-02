@@ -5,15 +5,18 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.filters import OrderingFilter
+from django_filters.rest_framework import DjangoFilterBackend
 from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.http import QueryDict
+from django.db import transaction
 from .permissions import IsInstructor, IsStudent
-from .serializers import InstructorProfileSerializer, StudentProfileSerializer, StudentRegisterSerializer, InstructorRegisterSerializer, RejectReasonSerializer, EmptySerializer, InstructorVerificationDocumentSerializer
-from .models import StudentProfile, InstructorProfile, InstructorVerificationDocument
+from .serializers import InstructorProfileSerializer, InstructorVerificationSubmissionSerializer, StudentProfileSerializer, StudentRegisterSerializer, InstructorRegisterSerializer, RejectReasonSerializer, EmptySerializer, VerificationSubmissionAdminDetailSerializer, VerificationSubmissionAdminSerializer
+from .models import StudentProfile, InstructorProfile, InstructorVerificationDocument, VerificationSubmission
 from .validators import validate_document_file
 
 User = get_user_model()
@@ -62,11 +65,7 @@ class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
         Create a cleaned data dict and pass it to serializer instead of assigning request.data.
         """
         protected_keys = {
-            'is_verified',
-            'verification_requested_at',
-            'verification_rejected_reason',
-            'verification_reviewed_at',
-            'verification_document',  # handle uploads via a dedicated endpoint
+            'is_verified'
         }
 
         # Get object and serializer class as usual
@@ -92,121 +91,198 @@ class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
         self.perform_update(serializer)
 
         return Response(serializer.data)
+    
 
-
-class InstructorReviewViewSet(viewsets.ModelViewSet):
+class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAdminUser]
-    serializer_class = InstructorProfileSerializer
+    queryset = (
+        VerificationSubmission.objects
+        .select_related("profile", "profile__user")
+        .prefetch_related("documents")
+    )
+    
+    filter_backends = [DjangoFilterBackend, OrderingFilter]
 
-    def get_queryset(self):
-        return InstructorProfile.objects.filter(is_verified=False).select_related('user')
+    filterset_fields = ["status"]
+
+    ordering_fields = ["created_at", "reviewed_at"]
+    ordering = ["-created_at"]  # default: newest first
 
     def get_serializer_class(self):
-        if self.action == 'reject':
-            return RejectReasonSerializer
-        if self.action == 'approve':
-            return EmptySerializer
-        return InstructorProfileSerializer
+        if self.action == "retrieve":
+            return VerificationSubmissionAdminDetailSerializer
+        return VerificationSubmissionAdminSerializer
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+    def get_queryset(self):
+        qs = super().get_queryset()
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            qs = qs.filter(status=status_param)
+        return qs
+
+    @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
-        profile = self.get_object()
-        profile.is_verified = True
-        profile.verification_rejected_reason = ''
-        profile.verification_reviewed_at = timezone.now()
-        profile.save(update_fields=[
-                     'is_verified', 'verification_rejected_reason', 'verification_reviewed_at'])
+        submission = self.get_object()
 
-        try:
-            send_mail(
-                'Instructor account approved',
-                f'Hi {profile.user.username or profile.user.email},\n\nYour instructor account has been approved.',
-                settings.DEFAULT_FROM_EMAIL,
-                [profile.user.email],
-                fail_silently=False,
+        if submission.status != VerificationSubmission.STATUS_PENDING:
+            return Response(
+                {"detail": "Only pending submissions can be approved."},
+                status=status.HTTP_400_BAD_REQUEST
             )
-        except Exception:
-            pass
 
-        return Response({'detail': 'Instructor approved.'}, status=status.HTTP_200_OK)
+        submission.status = VerificationSubmission.STATUS_APPROVED
+        submission.reviewed_at = timezone.now()
+        submission.rejection_reason = ""
+        submission.save()
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAdminUser])
+        submission.profile.is_verified = True
+        submission.profile.save(update_fields=["is_verified"])
+
+        return Response({"detail": "Instructor verified."})
+
+    @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        reason = serializer.validated_data['reason']
-
-        profile = self.get_object()
-        profile.is_verified = False
-        profile.verification_rejected_reason = reason
-        profile.verification_reviewed_at = timezone.now()
-        profile.save(update_fields=[
-                     'is_verified', 'verification_rejected_reason', 'verification_reviewed_at'])
-
-        try:
-            send_mail(
-                'Instructor verification rejected',
-                f'Hi {profile.user.username or profile.user.email},\n\n'
-                f'Your instructor verification request was rejected.\n\nReason: {reason}',
-                settings.DEFAULT_FROM_EMAIL,
-                [profile.user.email],
-                fail_silently=False,
+        reason = request.data.get("rejection_reason")
+        if not reason:
+            return Response(
+                {"rejection_reason": "This field is required."},
+                status=status.HTTP_400_BAD_REQUEST
             )
-        except Exception:
-            pass
 
-        return Response({'detail': 'Instructor rejected.', 'reason': reason}, status=status.HTTP_200_OK)
+        submission = self.get_object()
+
+        if submission.status != VerificationSubmission.STATUS_PENDING:
+            return Response(
+                {"detail": "Only pending submissions can be rejected."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        submission.status = VerificationSubmission.STATUS_REJECTED
+        submission.reviewed_at = timezone.now()
+        submission.rejection_reason = reason
+        submission.save()
+
+        return Response({"detail": "Submission rejected."})
 
 
-
-class UploadVerificationDocumentAPIView(APIView):
-    """
-    Accepts one or more files via 'verification_documents' form field.
-    - Only instructors allowed.
-    - Validates each file.
-    - Creates InstructorVerificationDocument rows.
-    - Updates InstructorProfile: sets is_verified=False, clears rejection reason,
-      updates verification_requested_at.
-    - Returns the InstructorProfileSerializer (with documents list).
-    """
+class CreateVerificationSubmissionAPIView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [permissions.IsAuthenticated]
 
-    def post(self, request, *args, **kwargs):
+    @transaction.atomic
+    def post(self, request):
         user = request.user
         if user.role != User.ROLE_INSTRUCTOR:
-            return Response({'detail': 'Only instructors can upload verification documents.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": "Only instructors can submit verification."},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
-        # support either multiple files via 'verification_documents' or 'verification_document'
-        files = request.FILES.getlist('verification_documents')
+        profile = get_object_or_404(InstructorProfile, user=user)
+
+        # block invalid states
+        if profile.is_verified:
+            return Response(
+                {"detail": "Instructor already verified."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        existing_pending = VerificationSubmission.objects.filter(
+            profile=profile,
+            status=VerificationSubmission.STATUS_PENDING
+        ).exists()
+
+        if existing_pending:
+            return Response(
+                {"detail": "Verification already under review."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        files = request.FILES.getlist("verification_documents")
         if not files:
-            files = request.FILES.getlist('verification_document')
+            return Response(
+                {"detail": "verification_documents is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        if not files:
-            return Response({'detail': 'No files provided. Use "verification_documents" (multi) or "verification_document" (single).'}, status=status.HTTP_400_BAD_REQUEST)
+        submission = VerificationSubmission.objects.create(
+            profile=profile,
+            status=VerificationSubmission.STATUS_PENDING
+        )
 
-        profile, _ = InstructorProfile.objects.get_or_create(user=user)
-
-        created_docs = []
         for f in files:
-            try:
-                validate_document_file(f)
-            except Exception as e:
-                # return validation error for the offending file (abort entire upload)
-                return Response({'detail': f'File validation error: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+            validate_document_file(f)
+            InstructorVerificationDocument.objects.create(
+                submission=submission,
+                document=f
+            )
 
-            doc = InstructorVerificationDocument(profile=profile, document=f)
-            doc.save()
-            created_docs.append(doc)
+        return Response(
+            {"detail": "Verification submitted successfully."},
+            status=status.HTTP_201_CREATED
+        )
+    
 
-        # update profile to pending
-        profile.is_verified = False
-        profile.verification_rejected_reason = ''
-        profile.verification_requested_at = timezone.now()
-        # Optionally update the legacy single-file field to the most recent
-        # profile.verification_document = created_docs[-1].document
-        profile.save(update_fields=['is_verified', 'verification_rejected_reason', 'verification_requested_at'])
+class InstructorVerificationStatusAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
 
-        # Return updated profile data
-        serializer = InstructorProfileSerializer(profile, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    def get(self, request):
+        user = request.user
+
+        if user.role != User.ROLE_INSTRUCTOR:
+            return Response(
+                {"detail": "Only instructors can access this endpoint."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        profile = get_object_or_404(InstructorProfile, user=user)
+
+        # If already verified
+        if profile.is_verified:
+            return Response({
+                "is_verified": True,
+                "current_submission": None,
+                "can_resubmit": False,
+            })
+
+        # Try to find pending submission
+        pending_submission = (
+            VerificationSubmission.objects
+            .filter(profile=profile, status=VerificationSubmission.STATUS_PENDING)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if pending_submission:
+            return Response({
+                "is_verified": False,
+                "current_submission": InstructorVerificationSubmissionSerializer(
+                    pending_submission
+                ).data,
+                "can_resubmit": False,
+            })
+
+        # Otherwise, find latest rejected submission
+        rejected_submission = (
+            VerificationSubmission.objects
+            .filter(profile=profile, status=VerificationSubmission.STATUS_REJECTED)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if rejected_submission:
+            return Response({
+                "is_verified": False,
+                "current_submission": InstructorVerificationSubmissionSerializer(
+                    rejected_submission
+                ).data,
+                "can_resubmit": True,
+            })
+
+        # No submissions at all
+        return Response({
+            "is_verified": False,
+            "current_submission": None,
+            "can_resubmit": True,
+        })
+

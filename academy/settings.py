@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'djoser',
+    'django_filters',
     'drf_spectacular',
     'corsheaders',
     'users.apps.UsersConfig',
@@ -85,6 +86,11 @@ REST_FRAMEWORK = {
         'ip': '200/day',
         'email': '5/hour',
     },
+
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.OrderingFilter",
+    ],
 
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,

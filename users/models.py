@@ -1,5 +1,6 @@
 from django.utils import timezone
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 
 
@@ -53,6 +54,47 @@ class User(AbstractUser):
 
     def __str__(self):
         return f"{self.email} ({self.role})"
+    
+
+class VerificationSubmission(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
+    profile = models.ForeignKey(
+        "InstructorProfile",
+        on_delete=models.CASCADE,
+        related_name="verification_submissions"
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING
+    )
+
+    rejection_reason = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile"],
+                condition=Q(status="pending"),
+                name="unique_pending_verification_per_instructor"
+            )   
+    ]
+
+    def __str__(self):
+        return f"VerificationSubmission({self.profile.user.email}, {self.status})"
 
 
 
@@ -69,46 +111,33 @@ class StudentProfile(models.Model):
 
 class InstructorProfile(models.Model):
     user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name='instructor_profile')
+        User, on_delete=models.CASCADE, related_name='instructor_profile'
+    )
+
     bio = models.TextField(blank=True, null=True)
     expertise = models.CharField(max_length=255, blank=True, null=True)
 
-        # Verification fields
+    # Profile-level verification state
     is_verified = models.BooleanField(default=False)
     verification_requested_at = models.DateTimeField(null=True, blank=True)
-    verification_document = models.FileField(upload_to='instructor_docs/', null=True, blank=True)
-    verification_rejected_reason = models.TextField(blank=True, null=True)
-    verification_reviewed_at = models.DateTimeField(null=True, blank=True)
-
-    def mark_requested(self, document=None):
-        self.verification_requested_at = timezone.now()
-        if document:
-            self.verification_document = document
-        self.save(update_fields=['verification_requested_at', 'verification_document'])
 
     def __str__(self):
         return f"Instructor Profile: {self.user.email}"
 
 
-
 class InstructorVerificationDocument(models.Model):
-    """
-    Stores one verification file per row so an instructor can submit multiple documents.
-    """
-    profile = models.ForeignKey(
-        InstructorProfile,
+    submission = models.ForeignKey(
+        VerificationSubmission,
         on_delete=models.CASCADE,
-        related_name='documents'
+        related_name="documents"
     )
-    document = models.FileField(upload_to='instructor_docs/')
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    # optional metadata
-    filename = models.CharField(max_length=255, blank=True, null=True)
 
-    def save(self, *args, **kwargs):
-        if not self.filename and self.document:
-            self.filename = self.document.name
-        super().save(*args, **kwargs)
+    document = models.FileField(upload_to="verification_documents/")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Doc {self.id} for {self.profile.user.email}"
+        return f"Document({self.id})"
+
+
+
+

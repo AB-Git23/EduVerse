@@ -1,8 +1,8 @@
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.core.mail import send_mail
 from django.conf import settings
-from .models import User, InstructorProfile, InstructorVerificationDocument
+from .models import User, VerificationSubmission
 
 
 @receiver(post_save, sender=User)
@@ -17,29 +17,8 @@ def notify_admin_on_instructor_signup(sender, instance, created, **kwargs):
             except Exception:
                 pass
 
-
-@receiver(post_save, sender=InstructorProfile)
-def notify_admin_on_profile_created_with_document(sender, instance, created, **kwargs):
-    """
-    If a profile is created and a verification document is present,
-    notify admins (covers case where profile created/updated after initial user).
-    """
-    if created and instance.verification_document:
-        admin_emails = [email for _, email in getattr(settings, 'ADMINS', [])]
-        if admin_emails:
-            subject = 'Instructor submitted verification documents'
-            message = f'Instructor {instance.user.email} (id: {instance.user_id}) uploaded verification documents.'
-            try:
-                send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, admin_emails, fail_silently=False)
-            except Exception:
-                pass
-
-
-@receiver(post_save, sender=InstructorVerificationDocument)
-def notify_admin_on_document_upload(sender, instance, created, **kwargs):
-    """
-    Notify admins whenever an instructor uploads a new verification document.
-    """
+@receiver(post_save, sender=VerificationSubmission)
+def notify_admin_on_submission(sender, instance, created, **kwargs):
     if not created:
         return
 
@@ -47,43 +26,71 @@ def notify_admin_on_document_upload(sender, instance, created, **kwargs):
     if not admin_emails:
         return
 
-    subj = 'Instructor verification document uploaded'
-    msg = f"Instructor {instance.profile.user.email} uploaded a verification document (id={instance.id})."
+    subject = "New instructor verification submission"
+    message = (
+        f"Instructor {instance.profile.user.email} "
+        f"submitted verification documents.\n\n"
+        f"Submission ID: {instance.id}"
+    )
+
     try:
-        send_mail(subj, msg, settings.DEFAULT_FROM_EMAIL, admin_emails, fail_silently=False)
+        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, admin_emails)
     except Exception:
-        # dev: console backend prints; in prod you may want to log exceptions
         pass
 
 
-
-@receiver(post_save, sender=InstructorProfile)
+@receiver(post_save, sender=VerificationSubmission)
 def notify_instructor_on_review(sender, instance, created, **kwargs):
-    # Do nothing on initial creation (handled above)
     if created:
         return
 
-    # Approved
-    if instance.is_verified and not instance.verification_rejected_reason:
+    previous_status = getattr(instance, "_previous_status", None)
+
+    if previous_status == instance.status:
+        return  # no state change
+
+    user = instance.profile.user
+
+    if instance.status == VerificationSubmission.STATUS_APPROVED:
         subject = "Your instructor account has been approved"
         message = (
-            f"Hi {instance.user.username or instance.user.email},\n\n"
-            "Your instructor account has been approved. You can now create and publish courses."
+            f"Hi {user.username or user.email},\n\n"
+            "Your instructor verification has been approved."
         )
-        try:
-            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [instance.user.email], fail_silently=False)
-        except Exception:
-            pass
 
-    # Rejected
-    if instance.verification_rejected_reason:
+    elif instance.status == VerificationSubmission.STATUS_REJECTED:
         subject = "Your instructor verification was rejected"
         message = (
-            f"Hi {instance.user.username or instance.user.email},\n\n"
-            f"Your verification request was rejected.\n\nReason: {instance.verification_rejected_reason}\n\n"
-            "Please update your documents and re-submit."
+            f"Hi {user.username or user.email},\n\n"
+            "Your verification was rejected.\n\n"
+            f"Reason: {instance.rejection_reason}\n\n"
+            "Please re-submit your documents."
         )
-        try:
-            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [instance.user.email], fail_silently=False)
-        except Exception:
-            pass
+    else:
+        return
+
+    send_mail(
+        subject,
+        message,
+        settings.DEFAULT_FROM_EMAIL,
+        [user.email],
+        fail_silently=True,
+    )
+
+
+
+@receiver(pre_save, sender=VerificationSubmission)
+def cache_previous_status(sender, instance, **kwargs):
+    if not instance.pk:
+        instance._previous_status = None
+        return
+
+    try:
+        instance._previous_status = (
+            VerificationSubmission.objects
+            .only("status")
+            .get(pk=instance.pk)
+            .status
+        )
+    except VerificationSubmission.DoesNotExist:
+        instance._previous_status = None

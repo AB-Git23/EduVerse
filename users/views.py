@@ -1,9 +1,9 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.views import APIView
-from rest_framework import permissions, generics, status, mixins, viewsets
+from rest_framework import generics, status, mixins, viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny 
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.filters import OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
@@ -14,9 +14,9 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from django.http import QueryDict
 from django.db import transaction
-from .permissions import IsInstructor, IsStudent
-from .serializers import InstructorProfileSerializer, InstructorVerificationSubmissionSerializer, StudentProfileSerializer, StudentRegisterSerializer, InstructorRegisterSerializer, RejectReasonSerializer, EmptySerializer, VerificationSubmissionAdminDetailSerializer, VerificationSubmissionAdminSerializer
-from .models import StudentProfile, InstructorProfile, InstructorVerificationDocument, VerificationSubmission
+from .permissions import IsInstructor, IsStudent, IsAdmin
+from .serializers import InstructorProfileSerializer, InstructorVerificationSubmissionSerializer, StudentProfileSerializer, StudentRegisterSerializer, InstructorRegisterSerializer, RejectReasonSerializer, EmptySerializer, VerificationAuditLogSerializer, VerificationSubmissionAdminDetailSerializer, VerificationSubmissionAdminSerializer
+from .models import StudentProfile, InstructorProfile, InstructorVerificationDocument, VerificationSubmission, VerificationAuditLog
 from .validators import validate_document_file
 
 User = get_user_model()
@@ -25,18 +25,18 @@ User = get_user_model()
 class StudentRegisterView(mixins.CreateModelMixin, viewsets.GenericViewSet):
     queryset = User.objects.all()
     serializer_class = StudentRegisterSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [AllowAny]
 
 
 class InstructorRegisterView(mixins.CreateModelMixin, viewsets.GenericViewSet):
     queryset = User.objects.all()
     serializer_class = InstructorRegisterSerializer
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser]
 
 class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [permissions.IsAuthenticated]
-
+    permission_classes = [IsAuthenticated]
+    
     def get_serializer_class(self):
         if self.request.user.role == User.ROLE_STUDENT:
             return StudentProfileSerializer
@@ -94,7 +94,7 @@ class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
     
 
 class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdmin]
     queryset = (
         VerificationSubmission.objects
         .select_related("profile", "profile__user")
@@ -120,6 +120,7 @@ class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(status=status_param)
         return qs
 
+
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         submission = self.get_object()
@@ -138,7 +139,14 @@ class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
         submission.profile.is_verified = True
         submission.profile.save(update_fields=["is_verified"])
 
+        VerificationAuditLog.objects.create(
+            submission=submission,
+            admin=request.user,
+            action=VerificationAuditLog.ACTION_APPROVED,
+        )
+
         return Response({"detail": "Instructor verified."})
+
 
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
@@ -162,12 +170,20 @@ class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
         submission.rejection_reason = reason
         submission.save()
 
+        VerificationAuditLog.objects.create(
+            submission=submission,
+            admin=request.user,
+            action=VerificationAuditLog.ACTION_REJECTED,
+            reason=reason,
+        )
+
         return Response({"detail": "Submission rejected."})
+
 
 
 class CreateVerificationSubmissionAPIView(APIView):
     parser_classes = [MultiPartParser, FormParser]
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsInstructor]
 
     @transaction.atomic
     def post(self, request):
@@ -224,7 +240,7 @@ class CreateVerificationSubmissionAPIView(APIView):
     
 
 class InstructorVerificationStatusAPIView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsInstructor]
 
     def get(self, request):
         user = request.user
@@ -286,3 +302,13 @@ class InstructorVerificationStatusAPIView(APIView):
             "can_resubmit": True,
         })
 
+
+class AdminVerificationAuditLogAPIView(generics.ListAPIView):
+    permission_classes = [IsAdmin]
+    serializer_class = VerificationAuditLogSerializer
+
+    def get_queryset(self):
+        submission_id = self.kwargs["submission_id"]
+        return VerificationAuditLog.objects.filter(
+            submission_id=submission_id
+        ).select_related("admin")

@@ -1,19 +1,29 @@
 from rest_framework import permissions
 from rest_framework.permissions import BasePermission
 
-class IsAdminUserStrict(BasePermission):
+
+class IsAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user and request.user.is_staff
+        return (
+            request.user.is_authenticated
+            and request.user.role == "admin"
+        )
 
 
-class IsInstructor(permissions.BasePermission):
+class IsInstructor(BasePermission):
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and getattr(request.user, 'role', None) == 'instructor')
+        return (
+            request.user.is_authenticated
+            and request.user.role == "instructor"
+        )
 
-class IsStudent(permissions.BasePermission):
+
+class IsStudent(BasePermission):
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and getattr(request.user, 'role', None) == 'student')
-
+        return (
+            request.user.is_authenticated
+            and request.user.role == "student"
+        )
 
 class IsVerifiedInstructor(permissions.BasePermission):
     def has_permission(self, request, view):

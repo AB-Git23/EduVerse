@@ -10,10 +10,9 @@ router.register("admin/verification-submissions", views.AdminVerificationSubmiss
 
 urlpatterns = [
     path('', include(router.urls)),
-    # path("admin/verification-submissions/<int:submission_id>/approve/", views.ApproveVerificationSubmissionAPIView.as_view()),
-    # path("admin/verification-submissions/<int:submission_id>/reject/", views.RejectVerificationSubmissionAPIView.as_view()),
     path("instructor/verification/submit/", views.CreateVerificationSubmissionAPIView.as_view()),
     path("instructor/verification/status/", views.InstructorVerificationStatusAPIView.as_view(),),
+    path("admin/verification-submissions/<int:submission_id>/audit/", views.AdminVerificationAuditLogAPIView.as_view(),),
 
 
 ]

@@ -6,7 +6,7 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from .validators import validate_document_file
-from .models import InstructorProfile, StudentProfile, User, InstructorVerificationDocument, VerificationSubmission
+from .models import InstructorProfile, StudentProfile, User, InstructorVerificationDocument, VerificationAuditLog, VerificationSubmission
 
 User = get_user_model()
 
@@ -225,3 +225,21 @@ class RejectReasonSerializer(serializers.Serializer):
 
 class EmptySerializer(serializers.Serializer):
     pass
+
+
+class VerificationAuditLogSerializer(serializers.ModelSerializer):
+    admin_email = serializers.EmailField(
+        source="admin.email",
+        read_only=True
+    )
+
+    class Meta:
+        model = VerificationAuditLog
+        fields = [
+            "id",
+            "action",
+            "reason",
+            "admin_email",
+            "created_at",
+        ]
+

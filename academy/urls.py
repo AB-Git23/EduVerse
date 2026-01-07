@@ -28,7 +28,9 @@ urlpatterns = [
     path('api/auth/', include('djoser.urls.jwt')),
 
     path('api/users/', include('users.urls')),
-    
+
+    path("api/courses/", include("courses.urls")),
+
      # Schema file (JSON)
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Swagger UI

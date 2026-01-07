@@ -1,23 +1,36 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
+
 export default function Login() {
-  const { login } = useAuth();
+  const { login, isAuthenticated, isLoading } = useAuth();
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError(null);
+    setSubmitting(true);
 
     try {
       await login(email, password);
-      alert("Login successful");
-    } catch (err) {
+    } catch {
       setError("Invalid credentials");
+      setSubmitting(false);
     }
   };
+
+  // 🚨 IMPORTANT: redirect only after auth state is ready
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate("/profile", { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate]);
 
   return (
     <form onSubmit={handleSubmit}>
@@ -29,7 +42,7 @@ export default function Login() {
         type="email"
         placeholder="Email"
         value={email}
-        onChange={e => setEmail(e.target.value)}
+        onChange={(e) => setEmail(e.target.value)}
         required
       />
 
@@ -37,11 +50,13 @@ export default function Login() {
         type="password"
         placeholder="Password"
         value={password}
-        onChange={e => setPassword(e.target.value)}
+        onChange={(e) => setPassword(e.target.value)}
         required
       />
 
-      <button type="submit">Login</button>
+      <button type="submit" disabled={submitting}>
+        {submitting ? "Logging in..." : "Login"}
+      </button>
     </form>
   );
 }

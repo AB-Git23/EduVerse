@@ -15,7 +15,7 @@ from django.contrib.auth import get_user_model
 from django.http import QueryDict
 from django.db import transaction
 from .permissions import IsInstructor, IsStudent, IsAdmin
-from .serializers import InstructorProfileSerializer, InstructorVerificationSubmissionSerializer, StudentProfileSerializer, StudentRegisterSerializer, InstructorRegisterSerializer, RejectReasonSerializer, EmptySerializer, VerificationAuditLogSerializer, VerificationSubmissionAdminDetailSerializer, VerificationSubmissionAdminSerializer
+from .serializers import AdminProfileSerializer, InstructorProfileSerializer, InstructorVerificationSubmissionSerializer, StudentProfileSerializer, StudentRegisterSerializer, InstructorRegisterSerializer, RejectReasonSerializer, EmptySerializer, VerificationAuditLogSerializer, VerificationSubmissionAdminDetailSerializer, VerificationSubmissionAdminSerializer
 from .models import StudentProfile, InstructorProfile, InstructorVerificationDocument, VerificationSubmission, VerificationAuditLog
 from .validators import validate_document_file
 
@@ -36,61 +36,77 @@ class InstructorRegisterView(mixins.CreateModelMixin, viewsets.GenericViewSet):
 
 class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
-    
+
     def get_serializer_class(self):
-        if self.request.user.role == User.ROLE_STUDENT:
+        user = self.request.user
+
+        if user.role == User.ROLE_ADMIN:
+            return AdminProfileSerializer
+
+        if user.role == User.ROLE_STUDENT:
             return StudentProfileSerializer
+
         return InstructorProfileSerializer
 
     def get_object(self):
         user = self.request.user
+
+        # 🚨 CRITICAL: Admins do NOT get profiles
+        if user.role == User.ROLE_ADMIN:
+            return user
+
         if user.role == User.ROLE_STUDENT:
             profile, _ = StudentProfile.objects.get_or_create(user=user)
             return profile
+
         profile, _ = InstructorProfile.objects.get_or_create(user=user)
         return profile
 
     def destroy(self, request, *args, **kwargs):
-        user = request.user
-        user.delete()
+        request.user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def perform_update(self, serializer):
-        # This method runs the actual save; serializer already respects read_only_fields.
         serializer.save()
 
     def update(self, request, *args, **kwargs):
         """
-        Prevent non-staff users from modifying verification metadata.
-        Create a cleaned data dict and pass it to serializer instead of assigning request.data.
+        Prevent users from modifying restricted fields.
+        Admin profile is read-only by design.
         """
-        protected_keys = {
-            'is_verified'
-        }
 
-        # Get object and serializer class as usual
-        partial = kwargs.pop('partial', False)
+        # 🚨 Admins should NOT update via this endpoint
+        if request.user.role == User.ROLE_ADMIN:
+            return Response(
+                {"detail": "Admin profile cannot be modified."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        protected_keys = {"is_verified"}
+
+        partial = kwargs.pop("partial", False)
         instance = self.get_object()
         serializer_class = self.get_serializer_class()
 
-        # Build a cleaned copy of incoming data
         if isinstance(request.data, QueryDict):
             data = request.data.copy()
         else:
-            # ensure we work with a plain dict so we can pop safely
             data = dict(request.data)
 
-        if not request.user.is_staff:
-            for key in protected_keys:
-                data.pop(key, None)
+        for key in protected_keys:
+            data.pop(key, None)
 
-        # Now validate and save using serializer with the cleaned data
         serializer = serializer_class(
-            instance, data=data, partial=partial, context={'request': request})
+            instance,
+            data=data,
+            partial=partial,
+            context={"request": request},
+        )
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
 
         return Response(serializer.data)
+
     
 
 class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):

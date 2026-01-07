@@ -65,6 +65,12 @@ class VerificationSubmissionAdminDetailSerializer(serializers.ModelSerializer):
             "documents",
         ]
 
+class AdminProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["id", "email", "username", "role"]
+
+
 
 class VerificationSubmissionSerializer(serializers.ModelSerializer):
     documents = VerificationDocumentSerializer(many=True, read_only=True)

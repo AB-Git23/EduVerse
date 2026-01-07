@@ -1,39 +1,82 @@
-import { createContext, useContext, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import api from "../api/axios";
+import { fetchProfile } from "../api/profile";
+import type { UserProfile } from "../types/profile";
 import type { LoginResponse } from "../types/auth";
 
 interface AuthContextType {
-  accessToken: string | null;
+  user: UserProfile | null;
+  role: UserProfile["role"] | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [accessToken, setAccessToken] = useState<string | null>(
-    localStorage.getItem("accessToken")
-  );
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const isAuthenticated = !!user;
+  const role = user?.role ?? null;
+
+  const refreshProfile = async () => {
+    try {
+      const profile = await fetchProfile();
+      setUser(profile);
+    } catch {
+      logout();
+    }
+  };
 
   const login = async (email: string, password: string) => {
-    const response = await api.post<LoginResponse>("auth/jwt/create/", {
+    const res = await api.post<LoginResponse>("auth/jwt/create/", {
       email,
       password,
     });
 
-    localStorage.setItem("accessToken", response.data.access);
-    localStorage.setItem("refreshToken", response.data.refresh);
-    setAccessToken(response.data.access);
+    localStorage.setItem("accessToken", res.data.access);
+    localStorage.setItem("refreshToken", res.data.refresh);
+
+    await refreshProfile();
   };
 
   const logout = () => {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
-    setAccessToken(null);
+    setUser(null);
   };
 
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (!token) {
+      setIsLoading(false);
+      return;
+    }
+
+    refreshProfile().finally(() => setIsLoading(false));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ accessToken, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        role,
+        isAuthenticated,
+        isLoading,
+        login,
+        logout,
+        refreshProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

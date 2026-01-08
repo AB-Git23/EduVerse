@@ -42,14 +42,11 @@ class VerificationDocumentSerializer(serializers.ModelSerializer):
 
 
 class VerificationSubmissionAdminDetailSerializer(serializers.ModelSerializer):
-    instructor_email = serializers.EmailField(
-        source="profile.user.email",
-        read_only=True
-    )
-    instructor_username = serializers.CharField(
-        source="profile.user.username",
-        read_only=True
-    )
+    instructor_email = serializers.EmailField(source="profile.user.email", read_only=True)
+    instructor_username = serializers.CharField(source="profile.user.username", read_only=True)
+    instructor_bio = serializers.CharField(source="profile.bio", read_only=True)
+    instructor_expertise = serializers.CharField(source="profile.expertise", read_only=True)
+
     documents = VerificationDocumentSerializer(many=True, read_only=True)
 
     class Meta:
@@ -63,6 +60,8 @@ class VerificationSubmissionAdminDetailSerializer(serializers.ModelSerializer):
             "instructor_email",
             "instructor_username",
             "documents",
+            "instructor_bio",
+            "instructor_expertise",
         ]
 
 class AdminProfileSerializer(serializers.ModelSerializer):

@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from lessons.models import Lesson
 from .models import Course
 from .serializers import InstructorCourseSerializer
 from .permissions import IsInstructor, IsCourseOwner
@@ -39,6 +40,8 @@ class InstructorCourseDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
 
 
+
+
 class CoursePublishAPIView(APIView):
     permission_classes = [IsInstructor]
 
@@ -54,6 +57,16 @@ class CoursePublishAPIView(APIView):
                 "Course must have title and description."
             )
 
+        has_published_lessons = Lesson.objects.filter(
+            course=course,
+            is_published=True
+        ).exists()
+
+        if not has_published_lessons:
+            raise PermissionDenied(
+                "Course must have at least one published lesson."
+            )
+
         course.is_published = True
         course.save()
 
@@ -61,7 +74,4 @@ class CoursePublishAPIView(APIView):
             {"detail": "Course published."},
             status=status.HTTP_200_OK
         )
-    
-class PublicCourseListAPIView(generics.ListAPIView):
-    queryset = Course.objects.filter(is_published=True)
-    serializer_class = InstructorCourseSerializer
+

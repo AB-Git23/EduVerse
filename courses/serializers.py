@@ -20,3 +20,21 @@ class CoursePublishSerializer(serializers.ModelSerializer):
         model = Course
         fields = ["is_published"]
 
+
+class PublicCourseSerializer(serializers.ModelSerializer):
+    instructor_name = serializers.CharField(
+        source="instructor.user.username",
+        read_only=True
+    )
+
+    class Meta:
+        model = Course
+        fields = [
+            "id",
+            "title",
+            "description",
+            "instructor_name",
+            "created_at",
+        ]
+
+

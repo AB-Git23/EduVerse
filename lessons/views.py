@@ -5,9 +5,10 @@ from rest_framework import status
 from rest_framework import generics
 from rest_framework.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
+from .serializers import LessonSerializer, StudentLessonSerializer
 from .models import Lesson
-from .serializers import LessonSerializer
 from courses.models import Course
+from enrollments.models import Enrollment
 from courses.permissions import IsInstructor
 
 
@@ -76,4 +77,26 @@ class LessonPublishAPIView(APIView):
         return Response(
             {"detail": "Lesson published."},
             status=status.HTTP_200_OK
+        )
+
+
+
+
+class StudentLessonListAPIView(generics.ListAPIView):
+    serializer_class = StudentLessonSerializer
+
+    def get_queryset(self):
+        course_id = self.kwargs["course_id"]
+
+        is_enrolled = Enrollment.objects.filter(
+            student=self.request.user,
+            course_id=course_id
+        ).exists()
+
+        if not is_enrolled:
+            return Lesson.objects.none()
+
+        return Lesson.objects.filter(
+            course_id=course_id,
+            is_published=True
         )

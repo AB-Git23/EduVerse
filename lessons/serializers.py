@@ -19,3 +19,13 @@ class LessonSerializer(serializers.ModelSerializer):
             "is_published",
             "created_at",
         ]
+
+class StudentLessonSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Lesson
+        fields = [
+            "id",
+            "title",
+            "order",
+        ]
+

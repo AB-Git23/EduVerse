@@ -7,7 +7,7 @@ from rest_framework import status
 from django.shortcuts import get_object_or_404
 from lessons.models import Lesson
 from .models import Course
-from .serializers import InstructorCourseSerializer
+from .serializers import InstructorCourseSerializer, PublicCourseSerializer
 from .permissions import IsInstructor, IsCourseOwner
 
 
@@ -74,4 +74,15 @@ class CoursePublishAPIView(APIView):
             {"detail": "Course published."},
             status=status.HTTP_200_OK
         )
+
+
+class PublicCourseListAPIView(generics.ListAPIView):
+    queryset = Course.objects.filter(is_published=True)
+    serializer_class = PublicCourseSerializer
+
+
+class PublicCourseDetailAPIView(generics.RetrieveAPIView):
+    queryset = Course.objects.filter(is_published=True)
+    serializer_class = PublicCourseSerializer
+
 

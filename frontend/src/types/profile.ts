@@ -3,4 +3,5 @@ export interface UserProfile {
   email: string
   username: string
   role: "student" | "instructor" | "admin"
+  is_verified?: boolean;
 }

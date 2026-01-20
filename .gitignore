@@ -58,6 +58,10 @@ ENV/
 .env/
 *.env
 
+# Data Seed Files
+dev_seed.py
+users/management/commands/dev_seed.py
+
 # ============================
 # IDEs & Editors
 # ============================

@@ -3,7 +3,7 @@ from rest_framework.views import APIView
 from rest_framework import generics, status, mixins, viewsets
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny 
+from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.filters import OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
@@ -15,8 +15,26 @@ from django.contrib.auth import get_user_model
 from django.http import QueryDict
 from django.db import transaction
 from .permissions import IsInstructor, IsStudent, IsAdmin
-from .serializers import AdminProfileSerializer, InstructorProfileSerializer, InstructorVerificationSubmissionSerializer, StudentProfileSerializer, StudentRegisterSerializer, InstructorRegisterSerializer, RejectReasonSerializer, EmptySerializer, VerificationAuditLogSerializer, VerificationSubmissionAdminDetailSerializer, VerificationSubmissionAdminSerializer
-from .models import StudentProfile, InstructorProfile, InstructorVerificationDocument, VerificationSubmission, VerificationAuditLog
+from .serializers import (
+    AdminProfileSerializer,
+    InstructorProfileSerializer,
+    InstructorVerificationSubmissionSerializer,
+    StudentProfileSerializer,
+    StudentRegisterSerializer,
+    InstructorRegisterSerializer,
+    RejectReasonSerializer,
+    EmptySerializer,
+    VerificationAuditLogSerializer,
+    VerificationSubmissionAdminDetailSerializer,
+    VerificationSubmissionAdminSerializer,
+)
+from .models import (
+    StudentProfile,
+    InstructorProfile,
+    InstructorVerificationDocument,
+    VerificationSubmission,
+    VerificationAuditLog,
+)
 from .validators import validate_document_file
 
 User = get_user_model()
@@ -33,6 +51,7 @@ class InstructorRegisterView(mixins.CreateModelMixin, viewsets.GenericViewSet):
     serializer_class = InstructorRegisterSerializer
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser]
+
 
 class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
@@ -79,7 +98,7 @@ class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
         if request.user.role == User.ROLE_ADMIN:
             return Response(
                 {"detail": "Admin profile cannot be modified."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         protected_keys = {"is_verified"}
@@ -107,16 +126,13 @@ class ProfileDetail(generics.RetrieveUpdateDestroyAPIView):
 
         return Response(serializer.data)
 
-    
 
 class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAdmin]
-    queryset = (
-        VerificationSubmission.objects
-        .select_related("profile", "profile__user")
-        .prefetch_related("documents")
-    )
-    
+    queryset = VerificationSubmission.objects.select_related(
+        "profile", "profile__user"
+    ).prefetch_related("documents")
+
     filter_backends = [DjangoFilterBackend, OrderingFilter]
 
     filterset_fields = ["status"]
@@ -136,7 +152,6 @@ class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(status=status_param)
         return qs
 
-
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         submission = self.get_object()
@@ -144,7 +159,7 @@ class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
         if submission.status != VerificationSubmission.STATUS_PENDING:
             return Response(
                 {"detail": "Only pending submissions can be approved."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         submission.status = VerificationSubmission.STATUS_APPROVED
@@ -163,14 +178,13 @@ class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response({"detail": "Instructor verified."})
 
-
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
         reason = request.data.get("rejection_reason")
         if not reason:
             return Response(
                 {"rejection_reason": "This field is required."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         submission = self.get_object()
@@ -178,7 +192,7 @@ class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
         if submission.status != VerificationSubmission.STATUS_PENDING:
             return Response(
                 {"detail": "Only pending submissions can be rejected."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         submission.status = VerificationSubmission.STATUS_REJECTED
@@ -196,7 +210,6 @@ class AdminVerificationSubmissionViewSet(viewsets.ReadOnlyModelViewSet):
         return Response({"detail": "Submission rejected."})
 
 
-
 class CreateVerificationSubmissionAPIView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsInstructor]
@@ -207,7 +220,7 @@ class CreateVerificationSubmissionAPIView(APIView):
         if user.role != User.ROLE_INSTRUCTOR:
             return Response(
                 {"detail": "Only instructors can submit verification."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         profile = get_object_or_404(InstructorProfile, user=user)
@@ -216,44 +229,41 @@ class CreateVerificationSubmissionAPIView(APIView):
         if profile.is_verified:
             return Response(
                 {"detail": "Instructor already verified."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         existing_pending = VerificationSubmission.objects.filter(
-            profile=profile,
-            status=VerificationSubmission.STATUS_PENDING
+            profile=profile, status=VerificationSubmission.STATUS_PENDING
         ).exists()
 
         if existing_pending:
             return Response(
                 {"detail": "Verification already under review."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         files = request.FILES.getlist("verification_documents")
         if not files:
             return Response(
                 {"detail": "verification_documents is required."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         submission = VerificationSubmission.objects.create(
-            profile=profile,
-            status=VerificationSubmission.STATUS_PENDING
+            profile=profile, status=VerificationSubmission.STATUS_PENDING
         )
 
         for f in files:
             validate_document_file(f)
             InstructorVerificationDocument.objects.create(
-                submission=submission,
-                document=f
+                submission=submission, document=f
             )
 
         return Response(
             {"detail": "Verification submitted successfully."},
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )
-    
+
 
 class InstructorVerificationStatusAPIView(APIView):
     permission_classes = [IsInstructor]
@@ -264,59 +274,69 @@ class InstructorVerificationStatusAPIView(APIView):
         if user.role != User.ROLE_INSTRUCTOR:
             return Response(
                 {"detail": "Only instructors can access this endpoint."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         profile = get_object_or_404(InstructorProfile, user=user)
 
         # If already verified
         if profile.is_verified:
-            return Response({
-                "is_verified": True,
-                "current_submission": None,
-                "can_resubmit": False,
-            })
+            return Response(
+                {
+                    "is_verified": True,
+                    "current_submission": None,
+                    "can_resubmit": False,
+                }
+            )
 
         # Try to find pending submission
         pending_submission = (
-            VerificationSubmission.objects
-            .filter(profile=profile, status=VerificationSubmission.STATUS_PENDING)
+            VerificationSubmission.objects.filter(
+                profile=profile, status=VerificationSubmission.STATUS_PENDING
+            )
             .order_by("-created_at")
             .first()
         )
 
         if pending_submission:
-            return Response({
-                "is_verified": False,
-                "current_submission": InstructorVerificationSubmissionSerializer(
-                    pending_submission
-                ).data,
-                "can_resubmit": False,
-            })
+            return Response(
+                {
+                    "is_verified": False,
+                    "current_submission": InstructorVerificationSubmissionSerializer(
+                        pending_submission
+                    ).data,
+                    "can_resubmit": False,
+                }
+            )
 
         # Otherwise, find latest rejected submission
         rejected_submission = (
-            VerificationSubmission.objects
-            .filter(profile=profile, status=VerificationSubmission.STATUS_REJECTED)
+            VerificationSubmission.objects.filter(
+                profile=profile, status=VerificationSubmission.STATUS_REJECTED
+            )
             .order_by("-created_at")
             .first()
         )
 
         if rejected_submission:
-            return Response({
-                "is_verified": False,
-                "current_submission": InstructorVerificationSubmissionSerializer(
-                    rejected_submission
-                ).data,
-                "can_resubmit": True,
-            })
+            return Response(
+                {
+                    "is_verified": False,
+                    "current_submission": InstructorVerificationSubmissionSerializer(
+                        rejected_submission
+                    ).data,
+                    "can_resubmit": True,
+                }
+            )
 
         # No submissions at all
-        return Response({
-            "is_verified": False,
-            "current_submission": None,
-            "can_resubmit": True,
-        })
+        return Response(
+            {
+                "is_verified": False,
+                "current_submission": None,
+                "can_resubmit": True,
+            }
+        )
 
 
 class AdminVerificationAuditLogAPIView(generics.ListAPIView):

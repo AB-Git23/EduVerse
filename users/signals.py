@@ -8,21 +8,28 @@ from .models import User, VerificationSubmission
 @receiver(post_save, sender=User)
 def notify_admin_on_instructor_signup(sender, instance, created, **kwargs):
     if created and instance.role == User.ROLE_INSTRUCTOR:
-        admin_emails = [email for _, email in getattr(settings, 'ADMINS', [])]
+        admin_emails = [email for _, email in getattr(settings, "ADMINS", [])]
         if admin_emails:
-            subject = 'New instructor signup'
-            message = f'New instructor registered: {instance.email} (id: {instance.pk})'
+            subject = "New instructor signup"
+            message = f"New instructor registered: {instance.email} (id: {instance.pk})"
             try:
-                send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, admin_emails, fail_silently=False)
+                send_mail(
+                    subject,
+                    message,
+                    settings.DEFAULT_FROM_EMAIL,
+                    admin_emails,
+                    fail_silently=False,
+                )
             except Exception:
                 pass
+
 
 @receiver(post_save, sender=VerificationSubmission)
 def notify_admin_on_submission(sender, instance, created, **kwargs):
     if not created:
         return
 
-    admin_emails = [email for _, email in getattr(settings, 'ADMINS', [])]
+    admin_emails = [email for _, email in getattr(settings, "ADMINS", [])]
     if not admin_emails:
         return
 
@@ -78,7 +85,6 @@ def notify_instructor_on_review(sender, instance, created, **kwargs):
     )
 
 
-
 @receiver(pre_save, sender=VerificationSubmission)
 def cache_previous_status(sender, instance, **kwargs):
     if not instance.pk:
@@ -87,10 +93,7 @@ def cache_previous_status(sender, instance, **kwargs):
 
     try:
         instance._previous_status = (
-            VerificationSubmission.objects
-            .only("status")
-            .get(pk=instance.pk)
-            .status
+            VerificationSubmission.objects.only("status").get(pk=instance.pk).status
         )
     except VerificationSubmission.DoesNotExist:
         instance._previous_status = None

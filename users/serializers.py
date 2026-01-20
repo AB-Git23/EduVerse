@@ -6,7 +6,14 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from .validators import validate_document_file
-from .models import InstructorProfile, StudentProfile, User, InstructorVerificationDocument, VerificationAuditLog, VerificationSubmission
+from .models import (
+    InstructorProfile,
+    StudentProfile,
+    User,
+    InstructorVerificationDocument,
+    VerificationAuditLog,
+    VerificationSubmission,
+)
 
 User = get_user_model()
 
@@ -14,16 +21,16 @@ User = get_user_model()
 class CustomUserCreateSerializer(UserCreateSerializer):
     class Meta(UserCreateSerializer.Meta):
         model = User
-        fields = ('id', 'email', 'username', 'password', 'role')
+        fields = ("id", "email", "username", "password", "role")
 
 
 class CustomUserSerializer(UserSerializer):
 
     class Meta(UserSerializer.Meta):
         model = User
-        fields = ('id', 'email', 'username', 'role')
+        fields = ("id", "email", "username", "role")
         extra_kwargs = {
-            'role': {'read_only': True},
+            "role": {"read_only": True},
         }
 
 
@@ -32,7 +39,7 @@ class StudentProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StudentProfile
-        fields = ('user', 'enrollment_date', 'batch')
+        fields = ("user", "enrollment_date", "batch")
 
 
 class VerificationDocumentSerializer(serializers.ModelSerializer):
@@ -42,10 +49,16 @@ class VerificationDocumentSerializer(serializers.ModelSerializer):
 
 
 class VerificationSubmissionAdminDetailSerializer(serializers.ModelSerializer):
-    instructor_email = serializers.EmailField(source="profile.user.email", read_only=True)
-    instructor_username = serializers.CharField(source="profile.user.username", read_only=True)
+    instructor_email = serializers.EmailField(
+        source="profile.user.email", read_only=True
+    )
+    instructor_username = serializers.CharField(
+        source="profile.user.username", read_only=True
+    )
     instructor_bio = serializers.CharField(source="profile.bio", read_only=True)
-    instructor_expertise = serializers.CharField(source="profile.expertise", read_only=True)
+    instructor_expertise = serializers.CharField(
+        source="profile.expertise", read_only=True
+    )
 
     documents = VerificationDocumentSerializer(many=True, read_only=True)
 
@@ -64,11 +77,11 @@ class VerificationSubmissionAdminDetailSerializer(serializers.ModelSerializer):
             "instructor_expertise",
         ]
 
+
 class AdminProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "email", "username", "role"]
-
 
 
 class VerificationSubmissionSerializer(serializers.ModelSerializer):
@@ -91,12 +104,12 @@ class InstructorProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = InstructorProfile
-        fields = ('id', 'user', 'bio', 'expertise', 'is_verified', 'current_submission')
+        fields = ("id", "user", "bio", "expertise", "is_verified", "current_submission")
 
         read_only_fields = (
-            'is_verified',
-            'verification_requested_at',
-            'user',
+            "is_verified",
+            "verification_requested_at",
+            "user",
         )
 
     def get_current_submission(self, obj):
@@ -115,16 +128,16 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('email', 'username', 'password', 'batch')
-        extra_kwargs = {'password': {'write_only': True}}
+        fields = ("email", "username", "password", "batch")
+        extra_kwargs = {"password": {"write_only": True}}
 
     def create(self, validated_data):
-        batch = validated_data.pop('batch', '')
+        batch = validated_data.pop("batch", "")
 
         user = User.objects.create_user(
-            email=validated_data['email'],
-            username=validated_data.get('username') or validated_data['email'],
-            password=validated_data['password'],
+            email=validated_data["email"],
+            username=validated_data.get("username") or validated_data["email"],
+            password=validated_data["password"],
             role=User.ROLE_STUDENT,
         )
 
@@ -133,8 +146,7 @@ class StudentRegisterSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError(
-                "A user with this email already exists.")
+            raise serializers.ValidationError("A user with this email already exists.")
         return value
 
 
@@ -142,26 +154,30 @@ class InstructorRegisterSerializer(serializers.ModelSerializer):
     bio = serializers.CharField(required=False, write_only=True)
     expertise = serializers.CharField(required=False, write_only=True)
     verification_documents = serializers.ListField(
-        child=serializers.FileField(),
-        write_only=True,
-        allow_empty=False
+        child=serializers.FileField(), write_only=True, allow_empty=False
     )
 
     class Meta:
         model = User
-        fields = ('email', 'username', 'password', 'bio',
-                  'expertise', 'verification_documents')
-        extra_kwargs = {'password': {'write_only': True}}
+        fields = (
+            "email",
+            "username",
+            "password",
+            "bio",
+            "expertise",
+            "verification_documents",
+        )
+        extra_kwargs = {"password": {"write_only": True}}
 
     def create(self, validated_data):
-        bio = validated_data.pop('bio', '')
-        expertise = validated_data.pop('expertise', '')
-        documents = validated_data.pop('verification_documents')
+        bio = validated_data.pop("bio", "")
+        expertise = validated_data.pop("expertise", "")
+        documents = validated_data.pop("verification_documents")
 
         user = User.objects.create_user(
-            email=validated_data['email'],
-            username=validated_data.get('username') or validated_data['email'],
-            password=validated_data['password'],
+            email=validated_data["email"],
+            username=validated_data.get("username") or validated_data["email"],
+            password=validated_data["password"],
             role=User.ROLE_INSTRUCTOR,
         )
 
@@ -172,35 +188,30 @@ class InstructorRegisterSerializer(serializers.ModelSerializer):
         )
 
         submission = VerificationSubmission.objects.create(
-            profile=profile,
-            status=VerificationSubmission.STATUS_PENDING
+            profile=profile, status=VerificationSubmission.STATUS_PENDING
         )
 
         for doc in documents:
             validate_document_file(doc)
             InstructorVerificationDocument.objects.create(
-                submission=submission,
-                document=doc
+                submission=submission, document=doc
             )
 
         profile.verification_requested_at = timezone.now()
         profile.is_verified = False
-        profile.save(update_fields=[
-                     "verification_requested_at", "is_verified"])
+        profile.save(update_fields=["verification_requested_at", "is_verified"])
 
         return user
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError(
-                "A user with this email already exists.")
+            raise serializers.ValidationError("A user with this email already exists.")
         return value
 
 
 class VerificationSubmissionAdminSerializer(serializers.ModelSerializer):
     instructor_email = serializers.EmailField(
-        source="profile.user.email",
-        read_only=True
+        source="profile.user.email", read_only=True
     )
 
     class Meta:
@@ -233,10 +244,7 @@ class EmptySerializer(serializers.Serializer):
 
 
 class VerificationAuditLogSerializer(serializers.ModelSerializer):
-    admin_email = serializers.EmailField(
-        source="admin.email",
-        read_only=True
-    )
+    admin_email = serializers.EmailField(source="admin.email", read_only=True)
 
     class Meta:
         model = VerificationAuditLog
@@ -247,4 +255,3 @@ class VerificationAuditLogSerializer(serializers.ModelSerializer):
             "admin_email",
             "created_at",
         ]
-

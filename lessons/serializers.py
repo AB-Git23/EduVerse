@@ -20,6 +20,7 @@ class LessonSerializer(serializers.ModelSerializer):
             "created_at",
         ]
 
+
 class StudentLessonSerializer(serializers.ModelSerializer):
     class Meta:
         model = Lesson
@@ -28,4 +29,3 @@ class StudentLessonSerializer(serializers.ModelSerializer):
             "title",
             "order",
         ]
-

@@ -16,9 +16,7 @@ class InstructorCourseListCreateAPIView(generics.ListCreateAPIView):
     permission_classes = [IsInstructor]
 
     def get_queryset(self):
-        return Course.objects.filter(
-            instructor__user=self.request.user
-        )
+        return Course.objects.filter(instructor__user=self.request.user)
 
     def perform_create(self, serializer):
         instructor = self.request.user.instructor_profile
@@ -34,46 +32,29 @@ class InstructorCourseDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsInstructor, IsCourseOwner]
 
     def get_queryset(self):
-        return Course.objects.filter(
-            instructor__user=self.request.user
-        )
-
-
-
+        return Course.objects.filter(instructor__user=self.request.user)
 
 
 class CoursePublishAPIView(APIView):
     permission_classes = [IsInstructor]
 
     def post(self, request, pk):
-        course = get_object_or_404(
-            Course,
-            pk=pk,
-            instructor__user=request.user
-        )
+        course = get_object_or_404(Course, pk=pk, instructor__user=request.user)
 
         if not course.title or not course.description:
-            raise PermissionDenied(
-                "Course must have title and description."
-            )
+            raise PermissionDenied("Course must have title and description.")
 
         has_published_lessons = Lesson.objects.filter(
-            course=course,
-            is_published=True
+            course=course, is_published=True
         ).exists()
 
         if not has_published_lessons:
-            raise PermissionDenied(
-                "Course must have at least one published lesson."
-            )
+            raise PermissionDenied("Course must have at least one published lesson.")
 
         course.is_published = True
         course.save()
 
-        return Response(
-            {"detail": "Course published."},
-            status=status.HTTP_200_OK
-        )
+        return Response({"detail": "Course published."}, status=status.HTTP_200_OK)
 
 
 class PublicCourseListAPIView(generics.ListAPIView):
@@ -84,5 +65,3 @@ class PublicCourseListAPIView(generics.ListAPIView):
 class PublicCourseDetailAPIView(generics.RetrieveAPIView):
     queryset = Course.objects.filter(is_published=True)
     serializer_class = PublicCourseSerializer
-
-

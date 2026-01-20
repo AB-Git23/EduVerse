@@ -4,9 +4,7 @@ from users.models import InstructorProfile
 
 class Course(models.Model):
     instructor = models.ForeignKey(
-        InstructorProfile,
-        on_delete=models.CASCADE,
-        related_name="courses"
+        InstructorProfile, on_delete=models.CASCADE, related_name="courses"
     )
     title = models.CharField(max_length=255)
     description = models.TextField()

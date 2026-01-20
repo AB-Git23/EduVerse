@@ -5,14 +5,10 @@ from courses.models import Course
 
 class Enrollment(models.Model):
     student = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name="enrollments"
+        User, on_delete=models.CASCADE, related_name="enrollments"
     )
     course = models.ForeignKey(
-        Course,
-        on_delete=models.CASCADE,
-        related_name="enrollments"
+        Course, on_delete=models.CASCADE, related_name="enrollments"
     )
     enrolled_at = models.DateTimeField(auto_now_add=True)
 

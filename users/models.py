@@ -18,30 +18,30 @@ class CustomUserManager(BaseUserManager):
         return user
 
     def create_user(self, email, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', False)
-        extra_fields.setdefault('is_superuser', False)
+        extra_fields.setdefault("is_staff", False)
+        extra_fields.setdefault("is_superuser", False)
         return self._create_user(email, password, **extra_fields)
 
     def create_superuser(self, email, password, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
 
-        if extra_fields.get('is_staff') is not True:
-            raise ValueError('Superuser must have is_staff=True.')
-        if extra_fields.get('is_superuser') is not True:
-            raise ValueError('Superuser must have is_superuser=True.')
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
 
         return self._create_user(email, password, **extra_fields)
 
 
 class User(AbstractUser):
-    ROLE_STUDENT = 'student'
-    ROLE_INSTRUCTOR = 'instructor'
+    ROLE_STUDENT = "student"
+    ROLE_INSTRUCTOR = "instructor"
     ROLE_ADMIN = "admin"
 
     ROLE_CHOICES = (
-        (ROLE_STUDENT, 'Student'),
-        (ROLE_INSTRUCTOR, 'Instructor'),
+        (ROLE_STUDENT, "Student"),
+        (ROLE_INSTRUCTOR, "Instructor"),
         (ROLE_ADMIN, "Admin"),
     )
 
@@ -50,14 +50,14 @@ class User(AbstractUser):
 
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=ROLE_STUDENT)
 
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username']
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username"]
 
     objects = CustomUserManager()
 
     def __str__(self):
         return f"{self.email} ({self.role})"
-    
+
 
 class VerificationSubmission(models.Model):
     STATUS_PENDING = "pending"
@@ -73,13 +73,11 @@ class VerificationSubmission(models.Model):
     profile = models.ForeignKey(
         "InstructorProfile",
         on_delete=models.CASCADE,
-        related_name="verification_submissions"
+        related_name="verification_submissions",
     )
 
     status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default=STATUS_PENDING
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
     )
 
     rejection_reason = models.TextField(blank=True)
@@ -90,24 +88,24 @@ class VerificationSubmission(models.Model):
         indexes = [
             models.Index(fields=["status"]),
             models.Index(fields=["created_at"]),
-    ]
+        ]
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
                 fields=["profile"],
                 condition=Q(status="pending"),
-                name="unique_pending_verification_per_instructor"
-            )   
-    ]
+                name="unique_pending_verification_per_instructor",
+            )
+        ]
 
     def __str__(self):
         return f"VerificationSubmission({self.profile.user.email}, {self.status})"
 
 
-
 class StudentProfile(models.Model):
     user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name='student_profile')
+        User, on_delete=models.CASCADE, related_name="student_profile"
+    )
     # enrolled_courses = models.ManyToManyField('courses.Course', blank=True)
     enrollment_date = models.DateField(auto_now_add=True)
     batch = models.CharField(max_length=50, blank=True, null=True)
@@ -118,7 +116,7 @@ class StudentProfile(models.Model):
 
 class InstructorProfile(models.Model):
     user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name='instructor_profile'
+        User, on_delete=models.CASCADE, related_name="instructor_profile"
     )
 
     bio = models.TextField(blank=True, null=True)
@@ -134,9 +132,7 @@ class InstructorProfile(models.Model):
 
 class InstructorVerificationDocument(models.Model):
     submission = models.ForeignKey(
-        VerificationSubmission,
-        on_delete=models.CASCADE,
-        related_name="documents"
+        VerificationSubmission, on_delete=models.CASCADE, related_name="documents"
     )
 
     document = models.FileField(upload_to="verification_documents/")
@@ -156,9 +152,7 @@ class VerificationAuditLog(models.Model):
     ]
 
     submission = models.ForeignKey(
-        VerificationSubmission,
-        on_delete=models.CASCADE,
-        related_name="audit_logs"
+        VerificationSubmission, on_delete=models.CASCADE, related_name="audit_logs"
     )
 
     admin = models.ForeignKey(
@@ -166,13 +160,10 @@ class VerificationAuditLog(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="verification_actions"
+        related_name="verification_actions",
     )
 
-    action = models.CharField(
-        max_length=20,
-        choices=ACTION_CHOICES
-    )
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
 
     reason = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -180,11 +171,10 @@ class VerificationAuditLog(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["submission", "created_at"]),
-    ]
+        ]
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.action} | submission={self.submission_id} | admin={self.admin_id}"
-
-
-
+        return (
+            f"{self.action} | submission={self.submission_id} | admin={self.admin_id}"
+        )

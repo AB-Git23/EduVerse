@@ -11,5 +11,3 @@ class EnrollmentSerializer(serializers.ModelSerializer):
             "enrolled_at",
         ]
         read_only_fields = ["id", "enrolled_at"]
-
-

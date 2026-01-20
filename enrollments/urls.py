@@ -7,6 +7,4 @@ urlpatterns = [
         StudentEnrollmentListCreateAPIView.as_view(),
         name="student-enrollments",
     ),
-    
 ]
-

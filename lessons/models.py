@@ -8,6 +8,7 @@ class Lesson(models.Model):
     content = models.TextField(blank=True)
     order = models.PositiveIntegerField()
     is_published = models.BooleanField(default=False)
+    is_preview = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

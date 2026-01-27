@@ -1,4 +1,3 @@
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -12,17 +11,13 @@ from enrollments.models import Enrollment
 from courses.permissions import IsInstructor
 
 
-class InstructorLessonListCreateAPIView(
-    generics.ListCreateAPIView
-):
+class InstructorLessonListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = LessonSerializer
     permission_classes = [IsInstructor]
 
     def get_course(self):
         course = get_object_or_404(
-            Course,
-            pk=self.kwargs["course_id"],
-            instructor__user=self.request.user
+            Course, pk=self.kwargs["course_id"], instructor__user=self.request.user
         )
         return course
 
@@ -33,16 +28,12 @@ class InstructorLessonListCreateAPIView(
         course = self.get_course()
 
         if course.is_published is True:
-            raise PermissionDenied(
-                "Cannot add lessons to a published course."
-            )
+            raise PermissionDenied("Cannot add lessons to a published course.")
 
         serializer.save(course=course)
 
 
-class InstructorLessonDetailAPIView(
-    generics.RetrieveUpdateDestroyAPIView
-):
+class InstructorLessonDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = LessonSerializer
     permission_classes = [IsInstructor]
 
@@ -51,10 +42,8 @@ class InstructorLessonDetailAPIView(
             Lesson,
             pk=self.kwargs["lesson_id"],
             course__id=self.kwargs["course_id"],
-            course__instructor__user=self.request.user
+            course__instructor__user=self.request.user,
         )
-
-
 
 
 class LessonPublishAPIView(APIView):
@@ -65,7 +54,7 @@ class LessonPublishAPIView(APIView):
             Lesson,
             pk=lesson_id,
             course__id=course_id,
-            course__instructor__user=request.user
+            course__instructor__user=request.user,
         )
 
         if not lesson.title:
@@ -74,12 +63,7 @@ class LessonPublishAPIView(APIView):
         lesson.is_published = True
         lesson.save()
 
-        return Response(
-            {"detail": "Lesson published."},
-            status=status.HTTP_200_OK
-        )
-
-
+        return Response({"detail": "Lesson published."}, status=status.HTTP_200_OK)
 
 
 class StudentLessonListAPIView(generics.ListAPIView):
@@ -93,10 +77,43 @@ class StudentLessonListAPIView(generics.ListAPIView):
             course_id=course_id
         ).exists()
 
-        if not is_enrolled:
-            return Lesson.objects.none()
+        if is_enrolled:
+            return Lesson.objects.filter(
+                course_id=course_id,
+                is_published=True
+            )
 
         return Lesson.objects.filter(
             course_id=course_id,
+            is_published=True,
+            is_preview=True
+        )
+
+
+
+class StudentLessonDetailAPIView(generics.RetrieveAPIView):
+    serializer_class = LessonSerializer
+
+    def get_object(self):
+        course_id = self.kwargs["course_id"]
+        lesson_id = self.kwargs["lesson_id"]
+
+        lesson = get_object_or_404(
+            Lesson,
+            pk=lesson_id,
+            course_id=course_id,
             is_published=True
         )
+
+        if lesson.is_preview:
+            return lesson
+
+        is_enrolled = Enrollment.objects.filter(
+            student=self.request.user,
+            course_id=course_id
+        ).exists()
+
+        if not is_enrolled:
+            raise PermissionDenied("Enroll to access this lesson.")
+
+        return lesson

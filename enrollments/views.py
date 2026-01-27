@@ -18,6 +18,9 @@ class StudentEnrollmentListCreateAPIView(generics.ListCreateAPIView):
         course_id = self.request.data.get("course")
         course = get_object_or_404(Course, pk=course_id, is_published=True)
 
+        if course.price > 0:
+            raise PermissionDenied("Payment required to enroll in this course.")
+
         if course.instructor.user == self.request.user:
             raise PermissionDenied("Instructor cannot enroll in own course.")
 

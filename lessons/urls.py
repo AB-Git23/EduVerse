@@ -3,6 +3,7 @@ from .views import (
     InstructorLessonListCreateAPIView,
     InstructorLessonDetailAPIView,
     LessonPublishAPIView,
+    StudentLessonDetailAPIView,
     StudentLessonListAPIView,
 )
 
@@ -17,7 +18,6 @@ urlpatterns = [
         InstructorLessonDetailAPIView.as_view(),
         name="lesson-detail",
     ),
-
     path(
         "instructor/courses/<int:course_id>/lessons/<int:lesson_id>/publish/",
         LessonPublishAPIView.as_view(),
@@ -27,6 +27,10 @@ urlpatterns = [
         "student/courses/<int:course_id>/lessons/",
         StudentLessonListAPIView.as_view(),
         name="student-lessons",
-    )
-
+    ),
+    path(
+        "student/courses/<int:course_id>/lessons/<int:lesson_id>/",
+        StudentLessonDetailAPIView.as_view(),
+        name="student-lesson-detail",
+    ),
 ]

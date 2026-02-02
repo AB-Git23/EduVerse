@@ -16,31 +16,21 @@ class ReviewCreateAPIView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         course = get_object_or_404(
-            Course,
-            pk=self.kwargs["course_id"],
-            is_published=True
+            Course, pk=self.kwargs["course_id"], is_published=True
         )
 
         if course.instructor.user == self.request.user:
-            raise PermissionDenied(
-                "Instructor cannot review own course."
-            )
+            raise PermissionDenied("Instructor cannot review own course.")
 
         is_enrolled = Enrollment.objects.filter(
-            student=self.request.user,
-            course=course
+            student=self.request.user, course=course
         ).exists()
 
         if not is_enrolled:
-            raise PermissionDenied(
-                "You must be enrolled to review this course."
-            )
+            raise PermissionDenied("You must be enrolled to review this course.")
 
-        serializer.save(
-            student=self.request.user,
-            course=course
-        )
-    
+        serializer.save(student=self.request.user, course=course)
+
         update_course_rating(course)
 
 
@@ -48,6 +38,4 @@ class CourseReviewListAPIView(generics.ListAPIView):
     serializer_class = ReviewSerializer
 
     def get_queryset(self):
-        return Review.objects.filter(
-            course_id=self.kwargs["course_id"]
-        )
+        return Review.objects.filter(course_id=self.kwargs["course_id"])

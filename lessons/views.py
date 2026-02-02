@@ -73,22 +73,15 @@ class StudentLessonListAPIView(generics.ListAPIView):
         course_id = self.kwargs["course_id"]
 
         is_enrolled = Enrollment.objects.filter(
-            student=self.request.user,
-            course_id=course_id
+            student=self.request.user, course_id=course_id
         ).exists()
 
         if is_enrolled:
-            return Lesson.objects.filter(
-                course_id=course_id,
-                is_published=True
-            )
+            return Lesson.objects.filter(course_id=course_id, is_published=True)
 
         return Lesson.objects.filter(
-            course_id=course_id,
-            is_published=True,
-            is_preview=True
+            course_id=course_id, is_published=True, is_preview=True
         )
-
 
 
 class StudentLessonDetailAPIView(generics.RetrieveAPIView):
@@ -99,18 +92,14 @@ class StudentLessonDetailAPIView(generics.RetrieveAPIView):
         lesson_id = self.kwargs["lesson_id"]
 
         lesson = get_object_or_404(
-            Lesson,
-            pk=lesson_id,
-            course_id=course_id,
-            is_published=True
+            Lesson, pk=lesson_id, course_id=course_id, is_published=True
         )
 
         if lesson.is_preview:
             return lesson
 
         is_enrolled = Enrollment.objects.filter(
-            student=self.request.user,
-            course_id=course_id
+            student=self.request.user, course_id=course_id
         ).exists()
 
         if not is_enrolled:

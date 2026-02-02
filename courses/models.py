@@ -14,10 +14,8 @@ class Course(models.Model):
     average_rating = models.FloatField(default=0)
     reviews_count = models.PositiveIntegerField(default=0)
 
-
     class Meta:
         ordering = ["-created_at"]
 
     def __str__(self):
         return self.title
-

@@ -20,5 +20,4 @@ urlpatterns = [
         ReviewCreateAPIView.as_view(),
         name="review-create",
     ),
-
 ]

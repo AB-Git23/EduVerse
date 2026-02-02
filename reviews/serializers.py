@@ -3,10 +3,7 @@ from .models import Review
 
 
 class ReviewSerializer(serializers.ModelSerializer):
-    student_name = serializers.CharField(
-        source="student.username",
-        read_only=True
-    )
+    student_name = serializers.CharField(source="student.username", read_only=True)
 
     class Meta:
         model = Review

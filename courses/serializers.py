@@ -23,8 +23,7 @@ class CoursePublishSerializer(serializers.ModelSerializer):
 
 class PublicCourseSerializer(serializers.ModelSerializer):
     instructor_name = serializers.CharField(
-        source="instructor.user.username",
-        read_only=True
+        source="instructor.user.username", read_only=True
     )
 
     class Meta:
@@ -38,4 +37,3 @@ class PublicCourseSerializer(serializers.ModelSerializer):
             "reviews_count",
             "created_at",
         ]
-

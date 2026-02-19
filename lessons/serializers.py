@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Lesson
+from .models import Lesson, LessonProgress
 
 
 class LessonSerializer(serializers.ModelSerializer):
@@ -7,13 +7,14 @@ class LessonSerializer(serializers.ModelSerializer):
         model = Lesson
         fields = [
             "id",
-            "course",
+            "section",
             "title",
             "content",
             "order",
             "is_published",
             "created_at",
         ]
+
         read_only_fields = [
             "id",
             "is_published",
@@ -29,3 +30,11 @@ class StudentLessonSerializer(serializers.ModelSerializer):
             "title",
             "order",
         ]
+
+
+class LessonProgressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LessonProgress
+        fields = ["is_completed", "completed_at"]
+        read_only_fields = ["completed_at"]
+

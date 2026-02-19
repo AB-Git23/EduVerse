@@ -21,3 +21,22 @@ class Review(models.Model):
 
     def __str__(self):
         return f"{self.course.title} ({self.rating}/5)"
+
+
+# Signals to update course rating
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+from django.db.models import Avg
+
+@receiver(post_save, sender=Review)
+@receiver(post_delete, sender=Review)
+def update_course_rating(sender, instance, **kwargs):
+    course = instance.course
+    reviews = course.reviews.all()
+    if reviews.exists():
+        course.average_rating = reviews.aggregate(Avg("rating"))["rating__avg"]
+        course.reviews_count = reviews.count()
+    else:
+        course.average_rating = 0
+        course.reviews_count = 0
+    course.save()

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Course
+from .models import Course, Section
 
 
 @admin.register(Course)
@@ -25,3 +25,11 @@ class CourseAdmin(admin.ModelAdmin):
         ("Statistics", {"fields": ("average_rating", "reviews_count")}),
         ("Timestamps", {"fields": ("created_at",)}),
     )
+
+
+@admin.register(Section)
+class SectionAdmin(admin.ModelAdmin):
+    list_display = ("title", "course", "order")
+    list_filter = ("course",)
+    search_fields = ("title", "course__title")
+    ordering = ("course", "order")

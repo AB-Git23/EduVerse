@@ -5,6 +5,8 @@ from .views import (
     InstructorCourseListCreateAPIView,
     PublicCourseDetailAPIView,
     PublicCourseListAPIView,
+    InstructorSectionListCreateAPIView,
+    CourseCompletionAPIView,
 )
 
 urlpatterns = [
@@ -24,6 +26,11 @@ urlpatterns = [
         name="course-publish",
     ),
     path(
+        "instructor/courses/<int:course_id>/sections/",
+        InstructorSectionListCreateAPIView.as_view(),
+        name="instructor-sections",
+    ),
+    path(
         "public/courses/",
         PublicCourseListAPIView.as_view(),
         name="public-courses",
@@ -32,5 +39,10 @@ urlpatterns = [
         "public/courses/<int:pk>/",
         PublicCourseDetailAPIView.as_view(),
         name="public-course-detail",
+    ),
+    path(
+        "student/courses/<int:course_id>/completion/",
+        CourseCompletionAPIView.as_view(),
+        name="course-completion",
     ),
 ]

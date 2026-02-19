@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from lessons.models import Lesson
-from .models import Course
+from .models import Course, Section
 from .serializers import InstructorCourseSerializer, PublicCourseSerializer
 from .permissions import IsInstructor, IsCourseOwner
 
@@ -45,7 +45,7 @@ class CoursePublishAPIView(APIView):
             raise PermissionDenied("Course must have title and description.")
 
         has_published_lessons = Lesson.objects.filter(
-            course=course, is_published=True
+            section__course=course, is_published=True
         ).exists()
 
         if not has_published_lessons:
@@ -65,3 +65,58 @@ class PublicCourseListAPIView(generics.ListAPIView):
 class PublicCourseDetailAPIView(generics.RetrieveAPIView):
     queryset = Course.objects.filter(is_published=True)
     serializer_class = PublicCourseSerializer
+
+
+class InstructorSectionListCreateAPIView(generics.ListCreateAPIView):
+    from .serializers import SectionSerializer
+    serializer_class = SectionSerializer
+    permission_classes = [IsInstructor]
+
+    def get_queryset(self):
+        course_id = self.kwargs["course_id"]
+        return Section.objects.filter(course_id=course_id, course__instructor__user=self.request.user)
+
+    def perform_create(self, serializer):
+        course_id = self.kwargs["course_id"]
+        course = get_object_or_404(Course, pk=course_id, instructor__user=self.request.user)
+        
+        if course.is_published:
+            raise PermissionDenied("Cannot add sections to a published course.")
+        
+        serializer.save(course=course)
+
+
+class CourseCompletionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id):
+        from enrollments.models import Enrollment
+        from lessons.models import LessonProgress
+        
+        # Verify enrollment
+        enrollment = get_object_or_404(Enrollment, student=request.user, course_id=course_id)
+        
+        # Get all published lessons in the course
+        total_lessons = Lesson.objects.filter(
+            section__course_id=course_id,
+            is_published=True
+        ).count()
+        
+        if total_lessons == 0:
+            return Response({"completion_percentage": 0, "completed_lessons": 0, "total_lessons": 0})
+        
+        # Get completed lessons
+        completed_lessons = LessonProgress.objects.filter(
+            user=request.user,
+            lesson__section__course_id=course_id,
+            lesson__is_published=True,
+            is_completed=True
+        ).count()
+        
+        completion_percentage = round((completed_lessons / total_lessons) * 100, 2)
+        
+        return Response({
+            "completion_percentage": completion_percentage,
+            "completed_lessons": completed_lessons,
+            "total_lessons": total_lessons
+        })

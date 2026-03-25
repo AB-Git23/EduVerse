@@ -24,7 +24,7 @@ class InstructorLessonListCreateAPIView(generics.ListCreateAPIView):
         return course
 
     def get_queryset(self):
-        return Lesson.objects.filter(section__course=self.get_course())
+        return Lesson.objects.filter(section__course=self.get_course()).select_related("section", "section__course")
 
     def perform_create(self, serializer):
         course = self.get_course()
@@ -82,11 +82,11 @@ class StudentLessonListAPIView(generics.ListAPIView):
         ).exists()
 
         if is_enrolled:
-            return Lesson.objects.filter(section__course_id=course_id, is_published=True)
+            return Lesson.objects.filter(section__course_id=course_id, is_published=True).select_related("section")
 
         return Lesson.objects.filter(
             section__course_id=course_id, is_published=True, is_preview=True
-        )
+        ).select_related("section")
 
 
 class StudentLessonDetailAPIView(generics.RetrieveAPIView):

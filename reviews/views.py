@@ -4,7 +4,6 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Avg, Count
 from .models import Review
 from .serializers import ReviewSerializer
-from .utils import update_course_rating
 from enrollments.models import Enrollment
 from courses.models import Course
 from enrollments.permissions import IsStudent
@@ -30,8 +29,6 @@ class ReviewCreateAPIView(generics.CreateAPIView):
             raise PermissionDenied("You must be enrolled to review this course.")
 
         serializer.save(student=self.request.user, course=course)
-
-        update_course_rating(course)
 
 
 class CourseReviewListAPIView(generics.ListAPIView):

@@ -16,7 +16,7 @@ class InstructorCourseListCreateAPIView(generics.ListCreateAPIView):
     permission_classes = [IsInstructor]
 
     def get_queryset(self):
-        return Course.objects.filter(instructor__user=self.request.user)
+        return Course.objects.filter(instructor__user=self.request.user).select_related("instructor", "instructor__user")
 
     def perform_create(self, serializer):
         instructor = self.request.user.instructor_profile
@@ -32,7 +32,7 @@ class InstructorCourseDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsInstructor, IsCourseOwner]
 
     def get_queryset(self):
-        return Course.objects.filter(instructor__user=self.request.user)
+        return Course.objects.filter(instructor__user=self.request.user).select_related("instructor", "instructor__user")
 
 
 class CoursePublishAPIView(APIView):
@@ -58,12 +58,22 @@ class CoursePublishAPIView(APIView):
 
 
 class PublicCourseListAPIView(generics.ListAPIView):
-    queryset = Course.objects.filter(is_published=True)
+    queryset = Course.objects.filter(is_published=True).select_related(
+        "instructor__user"
+    ).prefetch_related(
+        "sections",
+        "sections__lessons"
+    )
     serializer_class = PublicCourseSerializer
 
 
 class PublicCourseDetailAPIView(generics.RetrieveAPIView):
-    queryset = Course.objects.filter(is_published=True)
+    queryset = Course.objects.filter(is_published=True).select_related(
+        "instructor__user"
+    ).prefetch_related(
+        "sections",
+        "sections__lessons"
+    )
     serializer_class = PublicCourseSerializer
 
 

@@ -129,4 +129,4 @@ python manage.py runserver
 
 Abdul Basit
 
-GitHub: https://github.com/AB-Git23
+GitHub: https://github.com/abdulbasitshaikh-dev
